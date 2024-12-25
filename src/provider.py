@@ -47,7 +47,9 @@ class ProviderFactory:
 
     @classmethod
     @functools.cache
-    def get_supported_providers(cls):
+    def get_supported_providers(cls, providers_to_load=None):
         """List all supported provider names based on files present in the providers directory."""
+        if providers_to_load:
+            return tuple(providers_to_load)
         provider_files = Path(cls.PROVIDERS_DIR).glob("*_provider.py")
-        return {file.stem.replace("_provider", "") for file in provider_files}
+        return tuple(file.stem.replace("_provider", "") for file in provider_files)

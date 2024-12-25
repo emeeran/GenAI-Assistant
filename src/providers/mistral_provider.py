@@ -1,6 +1,7 @@
 import os
 
 from mistralai import Mistral
+import mistralai
 
 from src.provider import Provider
 
