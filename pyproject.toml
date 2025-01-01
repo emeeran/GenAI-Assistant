@@ -297,6 +297,7 @@ dependencies = [
     "wcwidth==0.2.13",
     "XlsxWriter==3.2.0",
     "yarl==1.18.3",
+    "whisper==1.1.6",
 ]
 
 [tool.ruff]

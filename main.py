@@ -153,7 +153,15 @@ class Chat:
                 return extract_epub_text(BytesIO(file_content))
             elif file_type.startswith("image/"):
                 return perform_ocr(BytesIO(file_content))
-            return file_content.decode("utf-8")
+            else:
+                # Attempt UTF-8 first, then UTF-16, fallback to Latin-1
+                try:
+                    return file_content.decode("utf-8")
+                except UnicodeDecodeError:
+                    try:
+                        return file_content.decode("utf-16")
+                    except:
+                        return file_content.decode("latin-1", errors="replace")
         except Exception as e:
             st.error(f"File error: {e}")
             return None
@@ -191,6 +199,26 @@ class Chat:
                     )
                     content = response.choices[0].message.content
                     st.markdown(content)
+
+                    # Generate audio if voice output is enabled
+                    if st.session_state.voice_output != "Off":
+                        from gtts import gTTS
+                        from io import BytesIO
+
+                        lang_map = {
+                            "English": "en",
+                            "French": "fr",
+                            "German": "de",
+                            "Tamil": "ta",
+                        }  # added Tamil
+                        tts = gTTS(
+                            content, lang=lang_map[st.session_state.voice_output]
+                        )
+                        audio_bytes = BytesIO()
+                        tts.write_to_fp(audio_bytes)
+                        audio_bytes.seek(0)
+                        st.audio(audio_bytes, format="audio/mp3")
+
                     st.session_state.chat_history.extend(
                         [
                             {"role": "user", "content": prompt},
@@ -256,6 +284,13 @@ class Chat:
 
             st.session_state.temperature = st.slider(
                 "Response Creativity", 0.0, 1.0, 0.7, 0.01
+            )
+
+            # Add an option to generate audio
+            st.session_state.voice_output = st.selectbox(
+                "Voice Output",
+                ["Off", "English", "French", "German", "Tamil"],  # added Tamil
+                index=0,
             )
 
     def _render_actions(self):
@@ -337,15 +372,28 @@ class Chat:
                 "jpg",
                 "jpeg",
                 "png",
+                "mp3",  # added
+                "wav",  # added
             ],
         )
 
         if file and not st.session_state.get("file_processed"):
             try:
-                content = self._process_file(file.read(), file.type)
+                is_audio = file.type.startswith("audio/")
+                file_bytes = file.read()
+                content = self._process_file(file_bytes, file.type)
                 if content:
                     st.session_state.file_processed = True
-                    self._handle_chat(f"📎 File: {file.name}\n\n```\n{content}\n```")
+                    if is_audio:
+                        with st.chat_message("user"):
+                            st.markdown(f"📎 Audio file uploaded: {file.name}")
+                            st.audio(file_bytes, format=file.type)
+                        with st.chat_message("assistant"):
+                            st.markdown(f"**Transcription:**\n```\n{content}\n```")
+                    else:
+                        self._handle_chat(
+                            f"📎 File: {file.name}\n\n```\n{content}\n```"
+                        )
             except Exception as e:
                 st.error(f"File processing error: {e}")
 
