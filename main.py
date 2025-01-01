@@ -11,6 +11,7 @@ from src.document_processor import (
     extract_pdf_text,
     extract_epub_text,
     perform_ocr,
+    process_uploaded_file,
 )
 from src.client import Client
 from src.provider import ProviderFactory
@@ -143,29 +144,6 @@ class Chat:
             }
         )
 
-    @staticmethod
-    @lru_cache(maxsize=50)
-    def _process_file(file_content: bytes, file_type: str) -> Optional[str]:
-        try:
-            if file_type == "application/pdf":
-                return extract_pdf_text(BytesIO(file_content))
-            elif file_type == "application/epub+zip":
-                return extract_epub_text(BytesIO(file_content))
-            elif file_type.startswith("image/"):
-                return perform_ocr(BytesIO(file_content))
-            else:
-                # Attempt UTF-8 first, then UTF-16, fallback to Latin-1
-                try:
-                    return file_content.decode("utf-8")
-                except UnicodeDecodeError:
-                    try:
-                        return file_content.decode("utf-16")
-                    except:
-                        return file_content.decode("latin-1", errors="replace")
-        except Exception as e:
-            st.error(f"File error: {e}")
-            return None
-
     def _build_messages(self, prompt: str) -> List[Dict]:
         messages = []
         if st.session_state.persona:
@@ -210,7 +188,7 @@ class Chat:
                             "French": "fr",
                             "German": "de",
                             "Tamil": "ta",
-                        }  # added Tamil
+                        }
                         tts = gTTS(
                             content, lang=lang_map[st.session_state.voice_output]
                         )
@@ -289,7 +267,7 @@ class Chat:
             # Add an option to generate audio
             st.session_state.voice_output = st.selectbox(
                 "Voice Output",
-                ["Off", "English", "French", "German", "Tamil"],  # added Tamil
+                ["Off", "English", "French", "German", "Tamil"],
                 index=0,
             )
 
@@ -305,15 +283,21 @@ class Chat:
 
         if st.button("📝 Export", use_container_width=True):
             if st.session_state.chat_history:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                export_path = f"./exports/chat_export_{timestamp}.md"
-                os.makedirs("./exports", exist_ok=True)
-                try:
-                    with open(export_path, "w", encoding="utf-8") as f:
-                        f.write(DB._format_markdown(st.session_state.chat_history))
-                    st.success(f"Chat exported to `{export_path}`")
-                except Exception as e:
-                    st.error(f"Export failed: {e}")
+                export_name = st.text_input(
+                    "Enter export file name:", key="export_name_input"
+                )
+                if export_name and st.button(
+                    "Confirm Export", key="export_confirm_btn"
+                ):
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    export_path = f"./exports/{export_name}_{timestamp}.md"
+                    os.makedirs("./exports", exist_ok=True)
+                    try:
+                        with open(export_path, "w", encoding="utf-8") as f:
+                            f.write(DB._format_markdown(st.session_state.chat_history))
+                        st.success(f"Chat exported to `{export_path}`")
+                    except Exception as e:
+                        st.error(f"Export failed: {e}")
             else:
                 st.warning("No chat to export")
 
@@ -372,25 +356,26 @@ class Chat:
                 "jpg",
                 "jpeg",
                 "png",
-                "mp3",  # added
-                "wav",  # added
+                "mp3",
+                "wav",
             ],
         )
 
         if file and not st.session_state.get("file_processed"):
             try:
-                is_audio = file.type.startswith("audio/")
-                file_bytes = file.read()
-                content = self._process_file(file_bytes, file.type)
-                if content:
-                    st.session_state.file_processed = True
-                    if is_audio:
-                        with st.chat_message("user"):
-                            st.markdown(f"📎 Audio file uploaded: {file.name}")
-                            st.audio(file_bytes, format=file.type)
-                        with st.chat_message("assistant"):
-                            st.markdown(f"**Transcription:**\n```\n{content}\n```")
-                    else:
+                st.session_state.file_processed = True
+                if file.type.startswith("audio/"):
+                    with st.chat_message("user"):
+                        st.markdown(f"📎 Audio file uploaded: {file.name}")
+                        st.audio(file.read(), format=file.type)
+                    # Rewind file pointer before passing to process_uploaded_file
+                    file.seek(0)
+                    transcription = process_uploaded_file(file)
+                    with st.chat_message("assistant"):
+                        st.markdown(f"**Transcription:**\n```\n{transcription}\n```")
+                else:
+                    content = process_uploaded_file(file)
+                    if content:
                         self._handle_chat(
                             f"📎 File: {file.name}\n\n```\n{content}\n```"
                         )
