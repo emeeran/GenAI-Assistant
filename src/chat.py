@@ -297,7 +297,7 @@ class Chat:
                 if history:
                     st.session_state.chat_history = history
                     st.success(f"Loaded: {selected}")
-                    st.rerun()
+                    st.rerun()  # Force UI refresh
         except Exception as e:
             st.error(f"Load failed: {e}")
 
