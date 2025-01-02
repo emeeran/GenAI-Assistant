@@ -1,7 +1,33 @@
+import os
+from typing import Dict, Set
+from dataclasses import dataclass
+
 from .provider import ProviderFactory
 
+@dataclass
+class CompletionResponse:
+    choices: list
+
+    @staticmethod
+    def from_dict(data: Dict) -> 'CompletionResponse':
+        return CompletionResponse(
+            choices=[{"message": {"content": data.get("content", "")}}]
+        )
+
+class ChatCompletions:
+    def __init__(self, client: 'Client'):
+        self.client = client
+
+    def create(self, model: str, messages: list, temperature: float) -> CompletionResponse:
+        # Placeholder for actual API call
+        # In a real implementation, this would make calls to the respective APIs
+        return CompletionResponse.from_dict({"content": "Hello! This is a placeholder response."})
 
 class Client:
+    def __init__(self, credentials: Dict[str, Dict[str, str]]):
+        self.credentials = credentials
+        self.chat = ChatCompletions(self)
+
     def __init__(self, provider_configs: dict = {}):
         """
         Initialize the client with provider configurations.

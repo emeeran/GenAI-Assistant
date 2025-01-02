@@ -182,7 +182,7 @@ class Chat:
 
     def render_ui(self):
         st.markdown(
-            "<h1 style='text-align: center; color: #6ca395'>AI Chat Assistant 💬</h1>",
+            "<h1 style='text-align: center; color: #6ca395'>GenAI- Assistant 💬</h1>",
             unsafe_allow_html=True
         )
         self.render_sidebar()
@@ -242,7 +242,7 @@ class Chat:
 
     def _render_actions(self):
         col1, col2 = st.columns(2)
-        if col1.button("🔄 Refresh", use_container_width=True):
+        if col1.button("Refresh", use_container_width=True):
             st.session_state.chat_history = []
             st.rerun()
         if col2.button("✏️ Edit", use_container_width=True):
@@ -323,7 +323,7 @@ class Chat:
             st.session_state.file_processed = False
 
 def main():
-    st.set_page_config(page_title="AI Chat Assistant", page_icon="💬", layout="wide")
+    st.set_page_config(page_title="GenAI-Assistant", page_icon="💬", layout="wide")
     Chat().render_ui()
 
 if __name__ == "__main__":
