@@ -78,11 +78,10 @@ class Chat:
 
                     if response:
                         st.markdown(response)
-                        if st.session_state.voice_output != "Off":
-                            gender = st.session_state.get("voice_gender", "Male")
-                            play_audio(response, st.session_state.voice_output, gender)
 
-                        self._update_history(prompt, response)
+                        # Collect user feedback
+                        rating = st.radio("Feedback:", ["👍", "👎"], horizontal=True, key=f"feedback-{len(st.session_state.chat_history)}")
+                        st.session_state.chat_history.append({"role": "assistant", "content": response, "rating": rating})
 
         except Exception as e:
             st.error(f"Error processing message: {str(e)}")
