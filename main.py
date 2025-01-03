@@ -10,6 +10,10 @@ from src.provider import ProviderFactory
 from src.chat import Chat
 from src.config import CONFIG
 from persona import PERSONAS, DEFAULT_PERSONA  # Add persona imports
+from dotenv import load_dotenv
+
+# Load .env variables early in the startup
+load_dotenv()
 
 # Configure logging with more detailed settings
 logging.basicConfig(
@@ -36,11 +40,26 @@ class AppState:
 
     @staticmethod
     def _setup_client() -> Client:
-        return Client({
-            p: {"api_key": os.getenv(f"{p.upper()}_API_KEY")}
-            for p in CONFIG["SUPPORTED_PROVIDERS"]
-            if os.getenv(f"{p.upper()}_API_KEY")
-        })
+        """Set up the client with a fallback for keys."""
+        cohere_key = os.getenv("COHERE_API_KEY") or os.getenv("CO_API_KEY", "")
+        xai_key = os.getenv("XAI_API_KEY") or os.getenv("XAIKEY", "")
+
+        # Build provider dict, ensuring fallback keys
+        provider_keys = {}
+        for p in CONFIG["SUPPORTED_PROVIDERS"]:
+            candidate_env = os.getenv(f"{p.upper()}_API_KEY")
+            if p == "cohere" and not candidate_env:
+                candidate_env = cohere_key
+            if p == "xai" and not candidate_env:
+                candidate_env = xai_key
+
+            if candidate_env:
+                provider_keys[p] = {"api_key": candidate_env}
+            else:
+                # Could log a warning instead, or skip if key missing
+                pass
+
+        return Client(provider_keys)
 
     def _init_session_state(self):
         """Initialize session state with default values"""

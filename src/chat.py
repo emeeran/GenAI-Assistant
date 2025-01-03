@@ -82,73 +82,40 @@ class Chat:
             st.error(f"Failed to generate response: {str(e)}")
             return ""
 
-    async def generate_response(self, messages: List[Dict], temperature: float) -> str:
-        """Generate response with context awareness and offline fallback"""
+    def generate_response(self, messages: List[Dict], temperature: float) -> str:
+        """Generate response with retry for 429 errors."""
+        import time
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=f"{st.session_state.provider}:{st.session_state.model}",
+                    messages=messages,
+                    temperature=temperature
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                err_msg = str(e)
+                if "429 Too Many Requests" in err_msg:
+                    logger.warning(f"Rate-limited. Retry {attempt+1}/{max_retries}...")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    logger.error(f"Response generation error: {err_msg}")
+                    return "I'm having trouble generating a response. Please try again."
+        return "Too many rate-limit errors from xAI. Please wait and try again."
+
+    async def generate_streaming_response(self, messages: List[Dict], temperature: float) -> str:
+        """Generate response asynchronously"""
         try:
-            if st.session_state.is_offline:
-                # Try to get cached response
-                query = messages[-1]["content"]
-                if cached := self.offline_storage.get_offline_response(query):
-                    return cached
-                return "I'm currently in offline mode and don't have a cached response for this query."
-
-            # Get relevant context
-            context = self.context_manager.get_relevant_context(messages[-1]["content"])
-
-            # Add context to messages
-            context_messages = [
-                {"role": "system", "content": "Previous relevant context:"}
-            ] + context + messages
-
-            response = await super().generate_response(context_messages, temperature)
-
-            # Save response for offline use
-            self.offline_storage.save_response(
-                query=messages[-1]["content"],
-                response=response,
-                context={"messages": context}
+            response = self.client.chat.completions.create(
+                model=f"{st.session_state.provider}:{st.session_state.model}",
+                messages=messages,
+                temperature=temperature
             )
-
-            # Update context
-            self.context_manager.add_to_context({
-                "role": "assistant",
-                "content": response
-            })
-
-            return response
-
+            return response.choices[0].message.content
         except Exception as e:
             logger.error(f"Response generation error: {str(e)}")
             return "I'm having trouble generating a response. Please try again."
-
-    async def generate_streaming_response(self, messages: List[Dict], temperature: float) -> str:
-        """Generate streaming response with caching"""
-        try:
-            # Create completion with streaming
-            response_stream = self.client.chat.completions.create(
-                model=f"{st.session_state.provider}:{st.session_state.model}",
-                messages=messages,
-                temperature=temperature,
-                stream=True
-            )
-
-            placeholder = st.empty()
-            full_response = ""
-
-            # Handle non-async stream
-            for chunk in response_stream:
-                if hasattr(chunk.choices[0], 'delta') and chunk.choices[0].delta.content:
-                    content = chunk.choices[0].delta.content
-                    full_response += content
-                    placeholder.markdown(full_response + "▌")
-                await asyncio.sleep(0.01)  # Small delay to prevent UI freezing
-
-            placeholder.markdown(full_response)
-            return full_response
-
-        except Exception as e:
-            logger.error(f"Streaming error: {str(e)}")
-            return ""
 
     def handle_message(self, prompt: str):
         """Process user message and generate response"""
@@ -158,31 +125,33 @@ class Chat:
 
         if not st.session_state.model:
             with st.sidebar:
-                st.error("Please select a model in Settings ⚙️")
+                st.error("Please select a model in Settings")
             return
 
         try:
             with st.chat_message("user"):
                 st.markdown(prompt)
+                # Add user message to history immediately
+                st.session_state.chat_history.append({
+                    "role": "user",
+                    "content": prompt
+                })
 
             with st.chat_message("assistant"):
-                with st.spinner("Generating response..."):
-                    if st.session_state.is_offline:
-                        response = self._get_offline_response(prompt)
-                    else:
-                        # Use event loop for async operation
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        response = loop.run_until_complete(
-                            self.generate_streaming_response(
-                                self._build_messages(prompt),
-                                st.session_state.temperature
-                            )
-                        )
-                        loop.close()
+                with st.spinner("Thinking..."):
+                    # Use synchronous response generation
+                    response = self.generate_response(
+                        self._build_messages(prompt),
+                        st.session_state.temperature
+                    )
 
                     if response:
-                        self._update_context(prompt, response)
+                        st.markdown(response)
+                        # Add assistant response to history
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": response
+                        })
                         self._collect_feedback(response)
 
         except Exception as e:
@@ -207,18 +176,18 @@ class Chat:
         })
 
     def _collect_feedback(self, response: str):
-        """Collect and store user feedback"""
+        """Collect user feedback"""
         rating = st.radio(
             "Feedback:",
             ["👍", "👎"],
             horizontal=True,
             key=f"feedback-{len(st.session_state.chat_history)}"
         )
-        st.session_state.chat_history.append({
-            "role": "assistant",
-            "content": response,
-            "rating": rating
-        })
+        # Update the last assistant message with feedback
+        if st.session_state.chat_history:
+            last_msg = st.session_state.chat_history[-1]
+            if last_msg["role"] == "assistant":
+                last_msg["rating"] = rating
 
     def render_ui(self):
         """Render the main chat interface"""
@@ -243,157 +212,57 @@ class Chat:
 
     def _render_sidebar(self):
         with st.sidebar:
-            # Update CSS for improved button layout
+            # Simplified CSS for better stability
             st.markdown("""
                 <style>
                     section[data-testid="stSidebar"] {
-                        background-color: #2E2E2E;
                         width: 300px !important;
-                        padding-top: 0;
+                        background-color: #2E2E2E;
                     }
-                    div[data-testid="stExpander"] {
-                        background-color: #3E3E3E;
-                        border-radius: 4px;
-                        border: 1px solid #4A4A4A;
-                        margin-bottom: 0.5rem;
-                    }
-                    .css-1544g2n {padding-top: 0rem;}
-                    .block-container {padding: 0 !important;}
-
-                    /* Improved button styling */
                     .stButton button {
-                        width: 100% !important;
-                        margin: 0.2rem 0;
-                        padding: 0.25rem 0.5rem;
+                        width: 100%;
+                        padding: 0.25rem;
                         font-size: 0.85rem;
-                        border-radius: 4px;
-                        min-height: 2rem;
                     }
-
-                    /* Section styling */
-                    .sidebar-section {
+                    div.sidebar-section {
                         background: #3E3E3E;
                         padding: 0.75rem;
                         border-radius: 4px;
-                        margin: 0.75rem 0;
+                        margin: 0.5rem 0;
                     }
-
-                    /* Header styling */
-                    .sidebar-header {
+                    div.sidebar-header {
                         color: #6ca395;
                         font-size: 0.9rem;
                         font-weight: 600;
                         margin-bottom: 0.5rem;
-                        padding-left: 0.25rem;
-                    }
-
-                    /* Expander styling */
-                    .streamlit-expanderHeader {
-                        font-size: 0.9rem;
-                        padding: 0.75rem;
-                        background: #2E2E2E;
-                    }
-
-                    /* Column gaps */
-                    .row-widget.stColumns {
-                        gap: 0.5rem;
-                    }
-
-                    /* Compact button row */
-                    .button-row {
-                        display: flex;
-                        gap: 0.5rem;
-                        margin: 0.5rem 0;
-                    }
-                    .button-row .stButton {
-                        flex: 1;
-                    }
-                    .button-row .stButton button {
-                        width: 100% !important;
-                    }
-
-                    /* Secondary buttons */
-                    .secondary-buttons {
-                        display: flex;
-                        gap: 0.5rem;
-                    }
-                    .secondary-buttons .stButton {
-                        flex: 1;
-                    }
-
-                    /* More compact sections */
-                    .sidebar-section {
-                        background: #3E3E3E;
-                        padding: 0.5rem;
-                        border-radius: 4px;
-                        margin: 0.5rem 0;
                     }
                 </style>
             """, unsafe_allow_html=True)
 
-            # Settings Expander
-            with st.expander("Settings", expanded=False):
-                # Provider Selection
-                providers = sorted(ProviderFactory.get_supported_providers(self.config["SUPPORTED_PROVIDERS"]))
+            # Settings Section
+            with st.expander("⚙️ Settings", expanded=False):
+                # Provider & Model
                 provider = st.selectbox(
                     "Provider",
-                    providers,
-                    index=providers.index(st.session_state.provider),
-                    key="settings_provider_select"
+                    sorted(ProviderFactory.get_supported_providers(self.config["SUPPORTED_PROVIDERS"])),
+                    key="provider_select"
                 )
 
-                # Model Selection
                 if provider and (models := self.config["MODELS"].get(provider)):
-                    st.session_state.model = st.selectbox(
-                        "Model",
-                        models,
-                        key="settings_model_select"
-                    )
+                    model = st.selectbox("Model", models, key="model_select")
                     st.session_state.provider = provider
+                    st.session_state.model = model
 
-                st.markdown("---")
+                # Temperature with label
+                st.slider("Temperature", 0.0, 1.0, 0.7, 0.1, key="temp_slider")
 
-                # Persona Settings
-                personas = tuple(PERSONAS.keys())
-                selected_persona = st.selectbox(
-                    "Persona",
-                    personas,
-                    index=personas.index(st.session_state.persona),
-                    key="settings_persona_select"
-                )
-
-                if selected_persona == "Custom":
-                    st.session_state.custom_persona = st.text_area(
-                        "Custom Instructions",
-                        value=st.session_state.custom_persona,
-                        placeholder="Enter custom instructions...",
-                        key="settings_custom_instructions"
-                    )
-                    st.session_state.persona = "Custom"
-                else:
-                    st.session_state.persona = selected_persona
-
-                st.markdown("---")
-
-                # Temperature Setting
-                st.session_state.temperature = st.slider(
-                    "Temperature",
-                    min_value=0.0,
-                    max_value=1.0,
-                    value=st.session_state.temperature,
-                    step=0.1,
-                    help="Higher values make output more random, lower values more deterministic",
-                    key="settings_temperature"
-                )
-
-            # Chat Actions with improved layout
+            # Chat Actions
             st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-            st.markdown('<div class="sidebar-header">Chat Actions</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sidebar-header">Chat</div>', unsafe_allow_html=True)
 
-            # Primary actions in two columns
-            c1, c2 = st.columns([1, 1])
+            c1, c2 = st.columns(2)
             with c1:
-                if st.button("New", type="primary"):
+                if st.button("New Chat", type="primary"):
                     st.session_state.chat_history = []
                     st.rerun()
             with c2:
@@ -401,42 +270,34 @@ class Chat:
                     st.session_state.chat_history = []
                     st.rerun()
 
-            # Load and Save actions in same row
-            st.markdown('<div class="secondary-buttons">', unsafe_allow_html=True)
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                with st.expander("Load", expanded=False):
-                    self._handle_load()
-            with col2:
-                if st.button("Save"):
-                    self._handle_save()
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            # Export button
-            if st.button("Export"):
-                self._handle_export()
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            # File Management section
+            # File Operations
             st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-            st.markdown('<div class="sidebar-header">File Upload</div>', unsafe_allow_html=True)
-            with st.expander("Upload", expanded=False):
-                self._handle_uploads()
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sidebar-header">Files</div>', unsafe_allow_html=True)
 
-            # Footer
-            st.markdown(
-                """<div class="sidebar-footer">
-                    <span style='color: #888;'>Made with ❤️ using Streamlit</span>
-                </div>""",
-                unsafe_allow_html=True
-            )
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Save Chat"):
+                    self._handle_save()
+            with c2:
+                if st.button("Export"):
+                    self._handle_export()
+
+            with st.expander("Load Chat", expanded=False):
+                self._handle_load()
+
+            st.markdown('</div>', unsafe_allow_html=True)
 
     def _build_messages(self, prompt: str) -> List[Dict]:
-        """Build message history for API request"""
+        """Exclude 'rating' to avoid invalid_request_error."""
+        safe_history = []
+        for msg in st.session_state.chat_history:
+            safe_history.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
         return (
             [{"role": "system", "content": st.session_state.get("persona", "")}]
-            + st.session_state.chat_history
+            + safe_history
             + [{"role": "user", "content": prompt}]
         )
 
