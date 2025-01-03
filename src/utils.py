@@ -6,6 +6,8 @@ import sqlite3
 from functools import lru_cache
 import streamlit as st
 import logging
+import os
+import time
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -83,46 +85,40 @@ class ChatExporter:
 
         return messages
 
-    @classmethod
-    def export_markdown(cls, history: List[Dict], filename: str) -> Path:
-        """Export chat history to both database and markdown file"""
+    @staticmethod
+    def export_markdown(chat_history: List[Dict], filename: str) -> Optional[str]:
+        """Export chat history to markdown file"""
         try:
-            # Save to database
-            conn = sqlite3.connect(cls.DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS chat_history
-                (chat_name TEXT PRIMARY KEY, data JSON)
-            """)
-            cursor.execute(
-                "INSERT OR REPLACE INTO chat_history (chat_name, data) VALUES (?, ?)",
-                (filename, json.dumps(history))
-            )
-            conn.commit()
-            conn.close()
+            # Ensure export directory exists
+            export_dir = "exports"
+            os.makedirs(export_dir, exist_ok=True)
 
-            # Save to file
-            cls.EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            export_path = cls.EXPORTS_DIR / f"{filename}_{timestamp}.md"
-            content = cls._format_markdown(history)
-            export_path.write_text(content, encoding="utf-8")
-            logger.info(f"Exported chat '{filename}' to {export_path}")
+            # Create export path
+            export_path = os.path.join(export_dir, f"{filename}.md")
+
+            # Format chat content
+            content = ["# Chat Export\n"]
+            content.append(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+            for msg in chat_history:
+                role = msg.get('role', 'unknown')
+                text = msg.get('content', '')
+                feedback = msg.get('feedback', '')
+
+                content.append(f"\n### {role.title()}")
+                content.append(text)
+                if feedback:
+                    content.append(f"\nFeedback: {feedback}")
+
+            # Write to file
+            with open(export_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(content))
+
             return export_path
 
         except Exception as e:
-            logger.error(f"Failed to export chat '{filename}': {e}")
-            raise StorageError(f"Failed to export chat '{filename}': {e}")
-
-    @lru_cache(maxsize=100)
-    @staticmethod
-    def _format_markdown(history: List[Dict]) -> str:
-        """Format chat history as markdown"""
-        lines = ["# Chat Export\n"]
-        for msg in history:
-            role = "🤖 Assistant" if msg["role"] == "assistant" else "👤 User"
-            lines.extend([f"### {role}\n", f"{msg['content']}\n"])
-        return "\n".join(lines)  # Fixed string join syntax
+            logger.error(f"Failed to export chat '{filename}': {str(e)}")
+            return None
 
 class ConfigManager:
     @staticmethod
