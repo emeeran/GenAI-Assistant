@@ -107,14 +107,33 @@ def main():
         app = AppState()
         app.chat.render_ui()
 
+        # Add version info
+        st.sidebar.markdown("---")
+        st.sidebar.markdown(
+            "<div style='text-align: center; color: #666;'>"
+            "v1.0.0</div>",
+            unsafe_allow_html=True
+        )
+
     except Exception as e:
         logger.error(f"Application Error: {e}")
-        st.error(f"Application Error: {str(e)}")
-        if st.button("Reset Application"):
-            st.cache_data.clear()
-            st.cache_resource.clear()
-            st.session_state.clear()
-            st.rerun()
+        st.error(
+            "Application Error. Please try:\n"
+            "1. Refresh the page\n"
+            "2. Clear cache and restart\n"
+            "3. Check API keys"
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Clear Cache"):
+                st.cache_data.clear()
+                st.cache_resource.clear()
+                st.rerun()
+        with col2:
+            if st.button("Reset App"):
+                st.session_state.clear()
+                st.rerun()
 
 if __name__ == "__main__":
     main()

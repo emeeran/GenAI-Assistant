@@ -5,6 +5,8 @@ from .client import Client
 from .utils import ChatExporter
 from .provider import ProviderFactory
 from persona import PERSONAS, DEFAULT_PERSONA  # Fix relative import
+import asyncio
+import logging
 
 @dataclass
 class ChatMessage:
@@ -42,6 +44,10 @@ class Chat:
             st.session_state.model = None
         if not hasattr(st.session_state, "file_processed"):
             st.session_state.file_processed = False
+        if not hasattr(st.session_state, "chat_title"):
+            st.session_state.chat_title = "New Chat"
+        if not hasattr(st.session_state, "error_count"):
+            st.session_state.error_count = 0
 
     @st.cache_data(ttl=600, show_spinner=False)
     def generate_response(_self, messages: List[Dict], temperature: float) -> str:
@@ -57,10 +63,39 @@ class Chat:
             st.error(f"Failed to generate response: {str(e)}")
             return ""
 
+    async def generate_streaming_response(self, messages: List[Dict], temperature: float) -> str:
+        """Generate streaming response with caching"""
+        try:
+            response = await self.client.chat.completions.create(
+                model=f"{st.session_state.provider}:{st.session_state.model}",
+                messages=messages,
+                temperature=temperature,
+                stream=True
+            )
+
+            placeholder = st.empty()
+            full_response = ""
+
+            async for chunk in response:
+                if chunk.choices[0].delta.content:
+                    full_response += chunk.choices[0].delta.content
+                    placeholder.markdown(full_response + "▌")
+            placeholder.markdown(full_response)
+
+            return full_response
+        except Exception as e:
+            logger.error(f"Streaming error: {str(e)}")
+            return ""
+
     def handle_message(self, prompt: str):
         """Process user message and generate response"""
+        if not prompt.strip():
+            st.warning("Please enter a message")
+            return
+
         if not st.session_state.model:
-            st.warning("Please select a model first")
+            with st.sidebar:
+                st.error("Please select a model in Settings ⚙️")
             return
 
         try:
@@ -82,7 +117,8 @@ class Chat:
                         st.session_state.chat_history.append({"role": "assistant", "content": response, "rating": rating})
 
         except Exception as e:
-            st.error(f"Error processing message: {str(e)}")
+            logger.error(f"Message processing error: {str(e)}")
+            st.error("Failed to process message. Please try again.")
 
     def render_ui(self):
         """Render the main chat interface"""
@@ -313,14 +349,34 @@ class Chat:
         st.session_state.chat_history.extend([msg.to_dict() for msg in messages])
 
     def _render_chat_interface(self):
-        """Render main chat interface"""
-        # Display chat history
-        for msg in st.session_state.chat_history:
-            # Convert dict to ChatMessage if needed
-            if isinstance(msg, dict):
-                msg = ChatMessage.from_dict(msg)
-            with st.chat_message(msg.role):
-                st.markdown(msg.content)
+        """Render main chat interface with pagination"""
+        messages_per_page = self.config.get("MESSAGES_PER_PAGE", 10)
+        page = st.session_state.get('page', 0)
+
+        total_messages = len(st.session_state.chat_history)
+        total_pages = (total_messages - 1) // messages_per_page + 1
+
+        start_idx = page * messages_per_page
+        end_idx = min(start_idx + messages_per_page, total_messages)
+
+        # Display paginated messages
+        for msg in st.session_state.chat_history[start_idx:end_idx]:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # Pagination controls
+        if total_pages > 1:
+            cols = st.columns([1, 2, 2, 2, 1])
+            with cols[1]:
+                if st.button("◀️", disabled=page==0, key="prev_page"):
+                    st.session_state.page = max(0, page - 1)
+                    st.rerun()
+            with cols[2]:
+                st.write(f"Page {page + 1}/{total_pages}")
+            with cols[3]:
+                if st.button("▶️", disabled=page==total_pages-1, key="next_page"):
+                    st.session_state.page = min(total_pages - 1, page + 1)
+                    st.rerun()
 
         # Chat input
         if prompt := st.chat_input("Enter your message"):

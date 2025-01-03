@@ -24,6 +24,23 @@ CONFIG: Dict[str, Any] = {
     "CACHE_TTL": 3600
 }
 
+PERFORMANCE_CONFIG = {
+    "CACHE_TTL": 600,  # Cache timeout in seconds
+    "MAX_HISTORY_LENGTH": 100,  # Maximum messages to keep
+    "MESSAGES_PER_PAGE": 10,  # Messages per page
+    "MAX_FILE_SIZE": 5 * 1024 * 1024,  # 5MB max file size
+    "CHUNK_SIZE": 1024,  # Chunk size for processing
+    "RESPONSE_TIMEOUT": 30,  # API timeout
+    "MAX_RETRIES": 3,  # Maximum retries
+    "DEBOUNCE_MS": 100,  # Input debounce
+}
+
+# Update main config
+CONFIG.update({
+    "PERFORMANCE": PERFORMANCE_CONFIG,
+    # ...existing config...
+})
+
 # Create necessary directories
 CONFIG["DB_PATH"].parent.mkdir(parents=True, exist_ok=True)
 CONFIG["EXPORTS_PATH"].mkdir(parents=True, exist_ok=True)

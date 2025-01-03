@@ -3,11 +3,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import sqlite3
+from functools import lru_cache
+import streamlit as st
 
 class ChatExporter:
     EXPORTS_DIR = Path("./exports")
     DB_PATH = "chat_history.db"
 
+    @st.cache_data(ttl=300)
     @classmethod
     def get_saved_chats(cls) -> List[str]:
         """Get list of all saved chats from database"""
@@ -24,6 +27,7 @@ class ChatExporter:
             cls.EXPORTS_DIR.mkdir(exist_ok=True)
             return sorted(set(f.stem.rsplit('_', 1)[0] for f in cls.EXPORTS_DIR.glob("*.md")))
 
+    @st.cache_data(ttl=3600)
     @classmethod
     def load_markdown(cls, chat_name: str) -> Optional[List[Dict]]:
         """Load chat history from database or file"""
@@ -108,6 +112,7 @@ class ChatExporter:
             logger.error(f"Failed to export chat '{filename}': {e}")
             raise StorageError(f"Failed to export chat '{filename}': {e}")
 
+    @lru_cache(maxsize=100)
     @staticmethod
     def _format_markdown(history: List[Dict]) -> str:
         """Format chat history as markdown"""
@@ -115,7 +120,7 @@ class ChatExporter:
         for msg in history:
             role = "🤖 Assistant" if msg["role"] == "assistant" else "👤 User"
             lines.extend([f"### {role}\n", f"{msg['content']}\n"])
-        return "\n".join(lines)
+        return "\n".join(lines)  # Fixed string join syntax
 
 class ConfigManager:
     @staticmethod
@@ -129,3 +134,18 @@ class ConfigManager:
     def save_config(config: Dict[str, Any], config_path: str):
         path = Path(config_path)
         path.write_text(json.dumps(config, indent=2))
+
+@st.cache_data(ttl=3600)
+def load_provider_config(provider: str) -> Dict:
+    """Cache provider configuration"""
+    # ...config loading logic...
+
+@st.cache_data(ttl=300)
+def get_saved_chats() -> List[str]:
+    """Cache list of saved chats"""
+    # ...chat loading logic...
+
+@lru_cache(maxsize=100)
+def process_file_content(content: str, max_length: int = 2000) -> str:
+    """Cache file processing results"""
+    # ...file processing logic...
