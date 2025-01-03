@@ -297,7 +297,8 @@ class Chat:
             with c1:
                 st.button("New", type="primary", use_container_width=True)
             with c2:
-                st.button("Clear", use_container_width=True)
+                if st.button("Clear", use_container_width=True):
+                    self._handle_clear()
 
             # File Operations
             c1, c2 = st.columns(2)
@@ -322,6 +323,32 @@ class Chat:
                 margin-top: 0.5rem;'>v1.0.0</div>""",
                 unsafe_allow_html=True
             )
+
+    def _handle_clear(self):
+        """Reset all states to default and clear chat"""
+        # Reset chat history
+        st.session_state.chat_history = []
+
+        # Reset model settings to defaults
+        st.session_state.model = None
+        st.session_state.temperature = 0.7
+        st.session_state.provider = self.config["DEFAULT_PROVIDER"]
+        st.session_state.persona = DEFAULT_PERSONA
+        st.session_state.custom_persona = ""
+
+        # Reset UI states
+        st.session_state.edit_mode = False
+        st.session_state.save_clicked = False
+        st.session_state.load_clicked = False
+        st.session_state.file_processed = False
+        st.session_state.page = 0  # Reset pagination
+
+        # Clear any file upload state
+        if 'uploaded_file' in st.session_state:
+            del st.session_state.uploaded_file
+
+        # Force refresh
+        st.rerun()
 
     def _build_messages(self, prompt: str) -> List[Dict]:
         """Exclude 'rating' to avoid invalid_request_error."""
