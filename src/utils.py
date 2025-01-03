@@ -14,7 +14,6 @@ class ChatExporter:
     EXPORTS_DIR = Path("./exports")
     DB_PATH = "chat_history.db"
 
-    @st.cache_data(ttl=300)
     @classmethod
     def get_saved_chats(cls) -> List[str]:
         """Get list of all saved chats from database"""
@@ -31,7 +30,6 @@ class ChatExporter:
             cls.EXPORTS_DIR.mkdir(exist_ok=True)
             return sorted(set(f.stem.rsplit('_', 1)[0] for f in cls.EXPORTS_DIR.glob("*.md")))
 
-    @st.cache_data(ttl=3600)
     @classmethod
     def load_markdown(cls, chat_name: str) -> Optional[List[Dict]]:
         """Load chat history from database or file"""
@@ -57,7 +55,7 @@ class ChatExporter:
 
         except Exception as e:
             logger.error(f"Failed to load chat '{chat_name}': {e}")
-            raise StorageError(f"Failed to load chat '{chat_name}': {e}")
+            raise Exception(f"Failed to load chat '{chat_name}': {e}")
 
     @classmethod
     def _parse_markdown(cls, content: str) -> List[Dict]:

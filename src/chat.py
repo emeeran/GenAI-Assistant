@@ -212,80 +212,116 @@ class Chat:
 
     def _render_sidebar(self):
         with st.sidebar:
-            # Simplified CSS for better stability
+            # Update CSS to include inner box labels
             st.markdown("""
                 <style>
                     section[data-testid="stSidebar"] {
-                        width: 300px !important;
+                        width: 260px !important;
                         background-color: #2E2E2E;
+                        padding: 0.5rem;
                     }
                     .stButton button {
                         width: 100%;
-                        padding: 0.25rem;
-                        font-size: 0.85rem;
+                        padding: 0.15rem;
+                        font-size: 0.8rem;
+                        min-height: 1.5rem;
+                        margin: 0.1rem 0;
                     }
                     div.sidebar-section {
                         background: #3E3E3E;
-                        padding: 0.75rem;
+                        padding: 0.4rem;
                         border-radius: 4px;
-                        margin: 0.5rem 0;
+                        margin: 0.2rem 0;
                     }
-                    div.sidebar-header {
+                    /* Remove dividers */
+                    hr {display: none !important;}
+                    .css-12w0qpk {display: none;}
+
+                    /* Compact selectors and inputs */
+                    .stSelectbox > div > div {
+                        padding: 0.2rem;
+                        min-height: 1.5rem;
+                    }
+                    .stSlider {margin: 0.5rem 0;}
+
+                    /* Box label styling */
+                    .box-label {
                         color: #6ca395;
-                        font-size: 0.9rem;
-                        font-weight: 600;
-                        margin-bottom: 0.5rem;
+                        font-size: 0.7rem;
+                        margin-bottom: 0.3rem;
+                        padding: 0.1rem 0.3rem;
+                        border-bottom: 1px solid #4A4A4A;
+                    }
+
+                    /* Compact content padding */
+                    .content-box {
+                        padding: 0.3rem;
+                        margin-top: 0.2rem;
                     }
                 </style>
             """, unsafe_allow_html=True)
 
             # Settings Section
-            with st.expander("⚙️ Settings", expanded=False):
-                # Provider & Model
-                provider = st.selectbox(
-                    "Provider",
-                    sorted(ProviderFactory.get_supported_providers(self.config["SUPPORTED_PROVIDERS"])),
-                    key="provider_select"
-                )
+            with st.expander("⚙️", expanded=False):
+                st.markdown('<div class="box-label">Model Settings</div>', unsafe_allow_html=True)
+                with st.container():
+                    # Pre-select Groq
+                    provider = st.selectbox(
+                        "Provider",
+                        sorted(ProviderFactory.get_supported_providers(self.config["SUPPORTED_PROVIDERS"])),
+                        index=sorted(self.config["SUPPORTED_PROVIDERS"]).index("groq"),  # Force Groq selection
+                        key="provider_select",
+                        label_visibility="collapsed"
+                    )
 
-                if provider and (models := self.config["MODELS"].get(provider)):
-                    model = st.selectbox("Model", models, key="model_select")
-                    st.session_state.provider = provider
-                    st.session_state.model = model
+                    if provider and (models := self.config["MODELS"].get(provider)):
+                        model = st.selectbox(
+                            "Model",
+                            models,
+                            index=0,  # Select first Groq model by default
+                            key="model_select",
+                            label_visibility="collapsed"
+                        )
+                        st.session_state.provider = provider
+                        st.session_state.model = model
 
-                # Temperature with label
-                st.slider("Temperature", 0.0, 1.0, 0.7, 0.1, key="temp_slider")
+                    # Temperature slider
+                    st.markdown('<div class="box-label">Temperature</div>', unsafe_allow_html=True)
+                    st.slider("T", 0.0, 1.0, 0.7, 0.1,
+                        key="temp_slider",
+                        label_visibility="collapsed"
+                    )
 
             # Chat Actions
-            st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-            st.markdown('<div class="sidebar-header">Chat</div>', unsafe_allow_html=True)
-
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("New Chat", type="primary"):
-                    st.session_state.chat_history = []
-                    st.rerun()
+                st.button("New", type="primary", use_container_width=True)
             with c2:
-                if st.button("Clear"):
-                    st.session_state.chat_history = []
-                    st.rerun()
+                st.button("Clear", use_container_width=True)
 
             # File Operations
-            st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-            st.markdown('<div class="sidebar-header">Files</div>', unsafe_allow_html=True)
-
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("Save Chat"):
-                    self._handle_save()
+                st.button("Save", use_container_width=True)
             with c2:
-                if st.button("Export"):
-                    self._handle_export()
+                st.button("Export", use_container_width=True)
 
-            with st.expander("Load Chat", expanded=False):
+            # Load Chat with label
+            with st.expander("📂", expanded=False):
+                st.markdown('<div class="box-label">Load Chat</div>', unsafe_allow_html=True)
                 self._handle_load()
 
-            st.markdown('</div>', unsafe_allow_html=True)
+            # File Upload with label
+            with st.expander("📄", expanded=False):
+                st.markdown('<div class="box-label">Upload File</div>', unsafe_allow_html=True)
+                self._handle_uploads()
+
+            # Mini footer
+            st.markdown(
+                """<div style='text-align: center; color: #666; font-size: 0.7rem;
+                margin-top: 0.5rem;'>v1.0.0</div>""",
+                unsafe_allow_html=True
+            )
 
     def _build_messages(self, prompt: str) -> List[Dict]:
         """Exclude 'rating' to avoid invalid_request_error."""
@@ -362,6 +398,7 @@ class Chat:
     def _handle_load(self):
         """Handle load functionality"""
         try:
+            # Get saved chats directly from ChatExporter class method
             saved_chats = ChatExporter.get_saved_chats()
             if not saved_chats:
                 st.warning("No saved chats found")
@@ -370,16 +407,18 @@ class Chat:
             selected = st.selectbox(
                 "Select chat:",
                 saved_chats,
-                key="sidebar_load_chat_select"  # Updated unique key with better prefix
+                key="sidebar_load_chat_select"
             )
-            if selected and st.button("Load Selected", key="sidebar_load_button"):  # Added unique key for button
+            if selected and st.button("Load Selected", key="sidebar_load_button"):
+                # Use class method to load chat
                 history = ChatExporter.load_markdown(selected)
                 if history:
                     st.session_state.chat_history = history
                     st.success(f"Loaded: {selected}")
                     st.rerun()
         except Exception as e:
-            st.error(f"Load failed: {e}")
+            st.error(f"Load failed: {str(e)}")
+            logger.error(f"Load error: {str(e)}")
 
     def _handle_export(self):
         """Handle export functionality"""
