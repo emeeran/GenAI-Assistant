@@ -11,8 +11,16 @@ from src.chat import Chat
 from src.config import CONFIG
 from persona import PERSONAS, DEFAULT_PERSONA  # Add persona imports
 
-# Configure logging
-logging.basicConfig(level=logging.ERROR)
+# Configure logging with more detailed settings
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log')
+    ]
+)
+
 logger = logging.getLogger(__name__)  # Define logger
 
 T = TypeVar('T')

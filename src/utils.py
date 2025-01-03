@@ -5,6 +5,10 @@ from datetime import datetime
 import sqlite3
 from functools import lru_cache
 import streamlit as st
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 class ChatExporter:
     EXPORTS_DIR = Path("./exports")

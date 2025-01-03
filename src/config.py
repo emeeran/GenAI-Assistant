@@ -35,9 +35,17 @@ PERFORMANCE_CONFIG = {
     "DEBOUNCE_MS": 100,  # Input debounce
 }
 
+CONTEXT_CONFIG = {
+    "MAX_CONTEXT_LENGTH": 10,
+    "CONTEXT_RELEVANCE_THRESHOLD": 0.5,
+    "OFFLINE_CACHE_SIZE": 1000,
+    "OFFLINE_CACHE_TTL": 7 * 24 * 60 * 60,  # 7 days
+}
+
 # Update main config
 CONFIG.update({
     "PERFORMANCE": PERFORMANCE_CONFIG,
+    "CONTEXT": CONTEXT_CONFIG,
     # ...existing config...
 })
 

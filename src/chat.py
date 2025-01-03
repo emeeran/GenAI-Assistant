@@ -7,6 +7,12 @@ from .provider import ProviderFactory
 from persona import PERSONAS, DEFAULT_PERSONA  # Fix relative import
 import asyncio
 import logging
+from .context import ContextManager
+from .offline import OfflineStorage
+import streamlit as st
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ChatMessage:
@@ -35,6 +41,9 @@ class Chat:
         self.client = client
         self.config = config
         self._ensure_session_state()
+        self.context_manager = ContextManager()
+        self.offline_storage = OfflineStorage()
+        self._check_connectivity()
 
     def _ensure_session_state(self):
         """Ensure all required session state variables exist"""
@@ -48,6 +57,16 @@ class Chat:
             st.session_state.chat_title = "New Chat"
         if not hasattr(st.session_state, "error_count"):
             st.session_state.error_count = 0
+
+    def _check_connectivity(self):
+        """Check internet connectivity"""
+        try:
+            # Simple connectivity check
+            import socket
+            socket.create_connection(("8.8.8.8", 53), timeout=3)
+            st.session_state.is_offline = False
+        except OSError:
+            st.session_state.is_offline = True
 
     @st.cache_data(ttl=600, show_spinner=False)
     def generate_response(_self, messages: List[Dict], temperature: float) -> str:
@@ -63,10 +82,50 @@ class Chat:
             st.error(f"Failed to generate response: {str(e)}")
             return ""
 
+    async def generate_response(self, messages: List[Dict], temperature: float) -> str:
+        """Generate response with context awareness and offline fallback"""
+        try:
+            if st.session_state.is_offline:
+                # Try to get cached response
+                query = messages[-1]["content"]
+                if cached := self.offline_storage.get_offline_response(query):
+                    return cached
+                return "I'm currently in offline mode and don't have a cached response for this query."
+
+            # Get relevant context
+            context = self.context_manager.get_relevant_context(messages[-1]["content"])
+
+            # Add context to messages
+            context_messages = [
+                {"role": "system", "content": "Previous relevant context:"}
+            ] + context + messages
+
+            response = await super().generate_response(context_messages, temperature)
+
+            # Save response for offline use
+            self.offline_storage.save_response(
+                query=messages[-1]["content"],
+                response=response,
+                context={"messages": context}
+            )
+
+            # Update context
+            self.context_manager.add_to_context({
+                "role": "assistant",
+                "content": response
+            })
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Response generation error: {str(e)}")
+            return "I'm having trouble generating a response. Please try again."
+
     async def generate_streaming_response(self, messages: List[Dict], temperature: float) -> str:
         """Generate streaming response with caching"""
         try:
-            response = await self.client.chat.completions.create(
+            # Create completion with streaming
+            response_stream = self.client.chat.completions.create(
                 model=f"{st.session_state.provider}:{st.session_state.model}",
                 messages=messages,
                 temperature=temperature,
@@ -76,13 +135,17 @@ class Chat:
             placeholder = st.empty()
             full_response = ""
 
-            async for chunk in response:
-                if chunk.choices[0].delta.content:
-                    full_response += chunk.choices[0].delta.content
+            # Handle non-async stream
+            for chunk in response_stream:
+                if hasattr(chunk.choices[0], 'delta') and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    full_response += content
                     placeholder.markdown(full_response + "▌")
-            placeholder.markdown(full_response)
+                await asyncio.sleep(0.01)  # Small delay to prevent UI freezing
 
+            placeholder.markdown(full_response)
             return full_response
+
         except Exception as e:
             logger.error(f"Streaming error: {str(e)}")
             return ""
@@ -104,21 +167,58 @@ class Chat:
 
             with st.chat_message("assistant"):
                 with st.spinner("Generating response..."):
-                    response = self.generate_response(
-                        self._build_messages(prompt),
-                        st.session_state.temperature
-                    )
+                    if st.session_state.is_offline:
+                        response = self._get_offline_response(prompt)
+                    else:
+                        # Use event loop for async operation
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        response = loop.run_until_complete(
+                            self.generate_streaming_response(
+                                self._build_messages(prompt),
+                                st.session_state.temperature
+                            )
+                        )
+                        loop.close()
 
                     if response:
-                        st.markdown(response)
-
-                        # Collect user feedback
-                        rating = st.radio("Feedback:", ["👍", "👎"], horizontal=True, key=f"feedback-{len(st.session_state.chat_history)}")
-                        st.session_state.chat_history.append({"role": "assistant", "content": response, "rating": rating})
+                        self._update_context(prompt, response)
+                        self._collect_feedback(response)
 
         except Exception as e:
             logger.error(f"Message processing error: {str(e)}")
             st.error("Failed to process message. Please try again.")
+
+    def _get_offline_response(self, prompt: str) -> str:
+        """Get response in offline mode"""
+        if cached := self.offline_storage.get_offline_response(prompt):
+            return cached
+        return "I'm currently in offline mode and don't have a cached response for this query."
+
+    def _update_context(self, prompt: str, response: str):
+        """Update context with new message pair"""
+        self.context_manager.add_to_context({
+            "role": "user",
+            "content": prompt
+        })
+        self.context_manager.add_to_context({
+            "role": "assistant",
+            "content": response
+        })
+
+    def _collect_feedback(self, response: str):
+        """Collect and store user feedback"""
+        rating = st.radio(
+            "Feedback:",
+            ["👍", "👎"],
+            horizontal=True,
+            key=f"feedback-{len(st.session_state.chat_history)}"
+        )
+        st.session_state.chat_history.append({
+            "role": "assistant",
+            "content": response,
+            "rating": rating
+        })
 
     def render_ui(self):
         """Render the main chat interface"""
