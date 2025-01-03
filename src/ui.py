@@ -19,17 +19,31 @@ def render_sidebar(config: Dict):
                 0.0, 1.0, 0.7, 0.01
             )
 
+        # Add theme selection
+        with st.expander("Theme", expanded=False):
+            theme = st.selectbox(
+                "Choose Theme",
+                ["Light", "Dark", "Blue"],
+                index=0
+            )
+            _apply_theme(theme)
+
 def _render_provider_settings(config: Dict):
     """Render model provider selection"""
     providers = sorted(ProviderFactory.get_supported_providers(config["SUPPORTED_PROVIDERS"]))
     provider = st.selectbox(
         "Provider",
         providers,
-        index=providers.index(st.session_state.provider)
+        index=providers.index(st.session_state.provider),
+        key="sidebar_provider_selectbox_ui_1"  # Updated unique key
     )
 
     if provider and (models := config["MODELS"].get(provider)):
-        st.session_state.model = st.selectbox("Model", models)
+        st.session_state.model = st.selectbox(
+            "Model",
+            models,
+            key="sidebar_model_selectbox_ui_1"  # Updated unique key
+        )
         st.session_state.provider = provider
 
 def _render_voice_settings(config: Dict):
@@ -38,8 +52,39 @@ def _render_voice_settings(config: Dict):
     st.session_state.voice_output = st.selectbox(
         "Voice Output",
         languages,
-        index=0
+        index=0,
+        key="voice_output_selectbox_ui_1"  # Updated unique key
     )
+
+def _apply_theme(theme: str):
+    """Apply selected theme to the application."""
+    if theme == "Dark":
+        st.markdown("""
+            <style>
+                body {
+                    background-color: #2E2E2E;
+                    color: #FFFFFF;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+    elif theme == "Blue":
+        st.markdown("""
+            <style>
+                body {
+                    background-color: #E0F7FA;
+                    color: #006064;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+            <style>
+                body {
+                    background-color: #FFFFFF;
+                    color: #000000;
+                }
+            </style>
+        """, unsafe_allow_html=True)
 
 def render_chat_interface(chat_instance):
     """Render main chat interface"""

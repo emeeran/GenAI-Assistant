@@ -1,4 +1,5 @@
 import os
+import logging  # Added import for logging
 from typing import Any, Dict, List, Optional, TypeVar
 from dataclasses import dataclass
 from functools import lru_cache
@@ -9,6 +10,10 @@ from src.provider import ProviderFactory
 from src.chat import Chat
 from src.config import CONFIG
 from persona import PERSONAS, DEFAULT_PERSONA  # Add persona imports
+
+# Configure logging
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)  # Define logger
 
 T = TypeVar('T')
 
@@ -103,9 +108,12 @@ def main():
         app.chat.render_ui()
 
     except Exception as e:
+        logger.error(f"Application Error: {e}")
         st.error(f"Application Error: {str(e)}")
         if st.button("Reset Application"):
+            st.cache_data.clear()
             st.cache_resource.clear()
+            st.session_state.clear()
             st.rerun()
 
 if __name__ == "__main__":
