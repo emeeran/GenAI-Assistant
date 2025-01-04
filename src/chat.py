@@ -157,6 +157,40 @@ class Chat:
                 </style>
             """, unsafe_allow_html=True)
 
+            # Display current Gen AI details at the top
+            if st.session_state.provider and st.session_state.model:
+                st.markdown(
+                    f"""
+                    <div style='
+                        background-color: #3a3a3a;
+                        padding: 10px;
+                        border-radius: 5px;
+                        margin-bottom: 10px;
+                        font-size: 0.9em;
+                    '>
+                        <div style='
+                            color: #6ca395;
+                            text-align: center;
+                            font-weight: bold;
+                            margin-bottom: 8px;
+                            border-bottom: 1px solid #4A4A4A;
+                            padding-bottom: 4px;
+                        '>
+                            Gen AI Details
+                        </div>
+                        <div style='padding: 0 5px;'>
+                            <span style='color: #6ca395;'>Provider:</span> {st.session_state.provider}<br>
+                            <span style='color: #6ca395;'>Model:</span> {st.session_state.model}<br>
+                            <span style='color: #6ca395;'>Persona:</span> {
+                                "Custom" if st.session_state.get("custom_persona")
+                                else next((k for k, v in PERSONAS.items() if v == st.session_state.persona), "Default")
+                            }
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
             # Settings Section
             with st.expander("**⚙️ Settings**", expanded=False):
                 st.markdown('<div class="box-label">Model Settings</div>', unsafe_allow_html=True)
