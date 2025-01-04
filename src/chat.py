@@ -40,8 +40,8 @@ class Chat:
             "error_count": 0,
             "chat_history": [],
             "page": 0,
-            "is_offline": not self._check_connectivity()
-            # Removed temperature from defaults
+            "is_offline": not self._check_connectivity(),
+            "persona": PERSONAS[DEFAULT_PERSONA]  # Add default persona
         }
         for key, value in defaults.items():
             if key not in st.session_state:
@@ -180,14 +180,36 @@ class Chat:
                         st.session_state.provider = provider
                         st.session_state.model = model
 
+                    # Add Persona Selection
+                    st.markdown('<div class="box-label">Persona</div>', unsafe_allow_html=True)
+                    persona_options = list(PERSONAS.keys()) + ["Custom"]
+                    selected_persona = st.selectbox(
+                        "Persona",
+                        persona_options,
+                        index=persona_options.index(DEFAULT_PERSONA),
+                        key="persona_select",
+                        label_visibility="collapsed"
+                    )
+
+                    if selected_persona == "Custom":
+                        custom_persona = st.text_area(
+                            "Enter custom persona instructions:",
+                            key="custom_persona",
+                            label_visibility="collapsed",
+                            placeholder="Enter instructions for the AI assistant..."
+                        )
+                        st.session_state.persona = custom_persona
+                    else:
+                        st.session_state.persona = PERSONAS[selected_persona]
+
+                    # Temperature control (existing)
                     st.markdown('<div class="box-label">Temperature</div>', unsafe_allow_html=True)
                     temperature = st.slider(
                         "T",
                         0.0, 1.0, 0.7, 0.1,
-                        key="temp_slider",  # Changed key name
+                        key="temp_slider",
                         label_visibility="collapsed"
                     )
-                    # Use temperature value directly when needed
                     st.session_state.temperature = temperature
 
             # Chat Actions
@@ -258,9 +280,32 @@ class Chat:
             self.handle_message(prompt)
 
     def _handle_clear(self):
-        """Reset chat state"""
-        st.session_state.chat_history = []
-        st.session_state.page = 0  # Reset page when clearing
+        """Reset all settings and chat state to defaults"""
+        # Reset core settings
+        defaults = {
+            "provider": self.config["DEFAULT_PROVIDER"],
+            "model": None,
+            "temperature": 0.7,
+            "persona": PERSONAS[DEFAULT_PERSONA],
+            "chat_history": [],
+            "page": 0,
+            "file_processed": False,
+            "chat_title": "New Chat"
+        }
+
+        # Clear any file upload state
+        if 'uploaded_file' in st.session_state:
+            del st.session_state.uploaded_file
+
+        # Reset custom persona if it exists
+        if 'custom_persona' in st.session_state:
+            del st.session_state.custom_persona
+
+        # Apply all defaults
+        for key, value in defaults.items():
+            st.session_state[key] = value
+
+        # Force UI refresh
         st.rerun()
 
     def _handle_load(self):
