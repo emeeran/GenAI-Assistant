@@ -1,8 +1,14 @@
 import os
-from typing import Dict, Set
+from typing import Dict, Set, Optional, List, Any
 from dataclasses import dataclass
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import logging
 
 from .provider import ProviderFactory
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class CompletionResponse:
@@ -24,10 +30,6 @@ class ChatCompletions:
         return CompletionResponse.from_dict({"content": "Hello! This is a placeholder response."})
 
 class Client:
-    def __init__(self, credentials: Dict[str, Dict[str, str]]):
-        self.credentials = credentials
-        self.chat = ChatCompletions(self)
-
     def __init__(self, provider_configs: dict = {}):
         """
         Initialize the client with provider configurations.
@@ -47,10 +49,36 @@ class Client:
                     }
                 }
         """
+        self._closing = False
+        self.session = self._setup_session()
         self.providers = {}
         self.provider_configs = provider_configs
         self._chat = None
         self._initialize_providers()
+
+    def _setup_session(self) -> requests.Session:
+        """Setup session with retries"""
+        session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504]
+        )
+        session.mount('http://', HTTPAdapter(max_retries=retries))
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        return session
+
+    def close(self):
+        """Cleanup resources"""
+        if not self._closing:
+            self._closing = True
+            if self.session:
+                self.session.close()
+
+    def __del__(self):
+        """Safe cleanup on deletion"""
+        if hasattr(self, '_closing') and not self._closing:
+            self.close()
 
     def _initialize_providers(self):
         """Helper method to initialize or update providers."""
@@ -88,18 +116,17 @@ class Client:
     def chat(self):
         """Return the chat API interface."""
         if not self._chat:
-            self._chat = Chat(self)
+            self._chat = ClientChat(self)
         return self._chat
 
 
-class Chat:
+class ClientChat:
     def __init__(self, client: "Client"):
         self.client = client
         self._completions = Completions(self.client)
 
     @property
     def completions(self):
-        """Return the completions interface."""
         return self._completions
 
 
@@ -140,4 +167,9 @@ class Completions:
             raise ValueError(f"Could not load provider for '{provider_key}'.")
 
         # Delegate the chat completion to the correct provider's implementation
-        return provider.chat_completions_create(model_name, messages, **kwargs)
+        try:
+            logger.info(f"Making API call to provider: {provider_key} with model: {model_name}")
+            return provider.chat_completions_create(model_name, messages, **kwargs)
+        except Exception as e:
+            logger.error(f"API call failed: {e}")
+            raise

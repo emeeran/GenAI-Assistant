@@ -9,7 +9,7 @@ from .utils import ChatExporter
 from .provider import ProviderFactory
 from .context import ContextManager
 from .offline import OfflineStorage
-from persona import PERSONAS, DEFAULT_PERSONA
+from .persona import PERSONAS, DEFAULT_PERSONA
 
 logger = logging.getLogger(__name__)
 

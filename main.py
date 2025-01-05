@@ -1,15 +1,16 @@
 import os
-import logging  # Added import for logging
+import logging
 from typing import Any, Dict, List, Optional, TypeVar
 from dataclasses import dataclass
 from functools import lru_cache
 import streamlit as st
+
+from src import (
+    Chat, Client, CONFIG,
+    PERSONAS, DEFAULT_PERSONA, PersonaCategory  # Update imports
+)
 from src.utils import ChatExporter, ConfigManager
-from src.client import Client
 from src.provider import ProviderFactory
-from src.chat import Chat
-from src.config import CONFIG
-from persona import PERSONAS, DEFAULT_PERSONA  # Add persona imports
 from dotenv import load_dotenv
 
 # Load .env variables early in the startup
@@ -84,21 +85,34 @@ def initialize_session_state(config: Dict):
     """Initialize session state with default values"""
     if "initialized" not in st.session_state:
         defaults = {
+            # Basic settings
             "chat_history": [],
             "current_chat": None,
             "model": None,
             "temperature": 0.7,
             "provider": config["DEFAULT_PROVIDER"],
             "voice_output": "Off",
-            "persona": DEFAULT_PERSONA,  # Set default persona
+            "persona": DEFAULT_PERSONA,
+
+            # UI states
+            "settings_expanded": False,
+            "load_expanded": False,
+            "upload_expanded": False,
+            "sidebar_expanded": False,
+            "sidebar_rendered": False,
+            "file_processed": False,
+
+            # Chat states
             "custom_persona": "",
             "edit_mode": False,
             "save_clicked": False,
             "load_clicked": False,
-            "file_processed": False,
+
+            # Operation flags
             "initialized": True
         }
         st.session_state.update(defaults)
+        logger.debug("Session state initialized with defaults")
 
 def hide_streamlit_header():
     """Hide Streamlit's default header and footer"""
