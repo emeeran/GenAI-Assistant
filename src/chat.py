@@ -357,11 +357,23 @@ class Chat:
                 key="load_chat_select"
             )
 
-            if st.button("Load", use_container_width=True, key="load_chat_button"):
-                if selected and (history := ChatExporter.load_markdown(selected)):
-                    st.session_state.chat_history = history
-                    st.success(f"Loaded: {selected}")
-                    st.rerun()
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Load", use_container_width=True, key="load_chat_button"):
+                    if selected and (history := ChatExporter.load_markdown(selected)):
+                        st.session_state.chat_history = history
+                        st.success(f"Loaded: {selected}")
+                        st.session_state.load_chat_select = selected  # Update selected chat
+                        st.rerun()
+            with c2:
+                if st.button("Delete", use_container_width=True, key="delete_chat_button"):
+                    if selected:
+                        ChatExporter.delete_chat(selected)
+                        st.success(f"Deleted: {selected}")
+                        # Refresh the saved chats list
+                        saved_chats = ChatExporter.get_saved_chats()
+                        st.session_state.load_chat_select = None  # Reset selection
+                        st.experimental_rerun()
 
         except Exception as e:
             logger.error(f"Load error: {str(e)}")

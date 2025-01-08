@@ -120,6 +120,22 @@ class ChatExporter:
             logger.error(f"Failed to export chat '{filename}': {str(e)}")
             return None
 
+    @staticmethod
+    def delete_chat(chat_name: str):
+        """Delete a saved chat"""
+        try:
+            chat_path = Path(f"./exports/{chat_name}.md")
+            if chat_path.exists():
+                os.remove(chat_path)
+                logger.info(f"Deleted chat: {chat_name}")
+                st.success(f"Chat '{chat_name}' has been deleted.")
+            else:
+                logger.warning(f"Chat not found: {chat_name}")
+                st.warning(f"Chat '{chat_name}' does not exist.")
+        except Exception as e:
+            logger.error(f"Failed to delete chat: {str(e)}")
+            st.error(f"Failed to delete chat '{chat_name}'. Please try again.")
+
 class ConfigManager:
     @staticmethod
     def load_config(config_path: str) -> Dict[str, Any]:
