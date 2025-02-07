@@ -19,21 +19,28 @@ CONFIG = {
     "DEFAULT_PROVIDER": "groq",
     "DB_PATH": "chat_history.db",
     "MODELS": {
-        "openai": ("gpt-4o", "gpt-4o-mini"),
+        "openai": ("gpt-4o", "gpt-4o-mini", "o1-mini-2024-09-12"),
         "anthropic": ("claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"),
-        "groq": ("llama-3.3-70b-versatile", "llama-3.1-8b-instant"),
+        "groq": (
+            "deepseek-r1-distill-llama-70b",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+        ),
         "cohere": ("command-r7b-12-2024",),
-        "xai": ("grok-2-vision-1212",)
-    }
+        "xai": ("grok-2-vision-1212",),
+    },
 }
+
 
 class DB:
     def __init__(self, path: str):
         self.conn = sqlite3.connect(path, check_same_thread=False)
-        self.conn.execute("""
+        self.conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS chat_history
             (chat_name TEXT PRIMARY KEY, data JSON)
-        """)
+        """
+        )
         self.conn.commit()
 
     @lru_cache(maxsize=100)
@@ -51,7 +58,7 @@ class DB:
         try:
             self.conn.execute(
                 "INSERT OR REPLACE INTO chat_history (chat_name, data) VALUES (?, ?)",
-                (name, json.dumps(history))
+                (name, json.dumps(history)),
             )
             self.conn.commit()
             self.load.cache_clear()
@@ -62,11 +69,11 @@ class DB:
             return False
 
     def _export_to_markdown(self, name: str, history: List[Dict]):
-        os.makedirs('./exports', exist_ok=True)
+        os.makedirs("./exports", exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        export_path = f'./exports/{name}_{timestamp}.md'
+        export_path = f"./exports/{name}_{timestamp}.md"
         content = self._format_markdown(history)
-        with open(export_path, 'w', encoding='utf-8') as f:
+        with open(export_path, "w", encoding="utf-8") as f:
             f.write(content)
 
     @staticmethod
@@ -89,12 +96,16 @@ class DB:
 
     def get_names(self) -> List[str]:
         try:
-            return [row[0] for row in self.conn.execute(
-                "SELECT chat_name FROM chat_history ORDER BY chat_name"
-            )]
+            return [
+                row[0]
+                for row in self.conn.execute(
+                    "SELECT chat_name FROM chat_history ORDER BY chat_name"
+                )
+            ]
         except Exception as e:
             st.error(f"List error: {e}")
             return []
+
 
 class Chat:
     def __init__(self):
@@ -103,30 +114,34 @@ class Chat:
         self.client = self._setup_client()
 
     def _init_session_state(self):
-        if not hasattr(st.session_state, 'initialized'):
-            st.session_state.update({
-                "chat_history": [],
-                "current_chat": None,
-                "model": None,
-                "temperature": 0.7,
-                "provider": CONFIG["DEFAULT_PROVIDER"],
-                "persona": DEFAULT_PERSONA,
-                "custom_persona": "",
-                "edit_mode": False,
-                "save_clicked": False,
-                "load_clicked": False,
-                "file_processed": False,
-                "initialized": True
-            })
+        if not hasattr(st.session_state, "initialized"):
+            st.session_state.update(
+                {
+                    "chat_history": [],
+                    "current_chat": None,
+                    "model": None,
+                    "temperature": 0.7,
+                    "provider": CONFIG["DEFAULT_PROVIDER"],
+                    "persona": DEFAULT_PERSONA,
+                    "custom_persona": "",
+                    "edit_mode": False,
+                    "save_clicked": False,
+                    "load_clicked": False,
+                    "file_processed": False,
+                    "initialized": True,
+                }
+            )
 
     @staticmethod
     @lru_cache(maxsize=1)
     def _setup_client():
-        return Client({
-            p: {"api_key": os.getenv(f"{p.upper()}_API_KEY")}
-            for p in CONFIG["SUPPORTED_PROVIDERS"]
-            if os.getenv(f"{p.upper()}_API_KEY")
-        })
+        return Client(
+            {
+                p: {"api_key": os.getenv(f"{p.upper()}_API_KEY")}
+                for p in CONFIG["SUPPORTED_PROVIDERS"]
+                if os.getenv(f"{p.upper()}_API_KEY")
+            }
+        )
 
     @staticmethod
     @lru_cache(maxsize=50)
@@ -138,7 +153,7 @@ class Chat:
                 return extract_epub_text(BytesIO(file_content))
             elif file_type.startswith("image/"):
                 return perform_ocr(BytesIO(file_content))
-            return file_content.decode('utf-8')
+            return file_content.decode("utf-8")
         except Exception as e:
             st.error(f"File error: {e}")
             return None
@@ -146,8 +161,11 @@ class Chat:
     def _build_messages(self, prompt: str) -> List[Dict]:
         messages = []
         if st.session_state.persona:
-            persona = (st.session_state.custom_persona if st.session_state.persona == "Custom"
-                      else PERSONAS[st.session_state.persona])
+            persona = (
+                st.session_state.custom_persona
+                if st.session_state.persona == "Custom"
+                else PERSONAS[st.session_state.persona]
+            )
             if persona:
                 messages.append({"role": "system", "content": persona})
         messages.extend(st.session_state.chat_history)
@@ -169,21 +187,23 @@ class Chat:
                     response = self.client.chat.completions.create(
                         model=f"{st.session_state.provider}:{st.session_state.model}",
                         messages=messages,
-                        temperature=st.session_state.temperature
+                        temperature=st.session_state.temperature,
                     )
                     content = response.choices[0].message.content
                     st.markdown(content)
-                    st.session_state.chat_history.extend([
-                        {"role": "user", "content": prompt},
-                        {"role": "assistant", "content": content}
-                    ])
+                    st.session_state.chat_history.extend(
+                        [
+                            {"role": "user", "content": prompt},
+                            {"role": "assistant", "content": content},
+                        ]
+                    )
         except Exception as e:
             st.error(f"Response error: {e}")
 
     def render_ui(self):
         st.markdown(
             "<h1 style='text-align: center; color: #6ca395'>GenAI- Assistant 💬</h1>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
         self.render_sidebar()
         self._render_chat()
@@ -200,7 +220,7 @@ class Chat:
         with st.sidebar:
             st.markdown(
                 '<h2 style="text-align: center; color: #6ca395;">Settings 🔧</h2>',
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
             self._render_settings()
             self._render_actions()
@@ -208,11 +228,11 @@ class Chat:
 
     def _render_settings(self):
         with st.expander("Configuration", expanded=False):
-            providers = sorted(ProviderFactory.get_supported_providers(CONFIG["SUPPORTED_PROVIDERS"]))
+            providers = sorted(
+                ProviderFactory.get_supported_providers(CONFIG["SUPPORTED_PROVIDERS"])
+            )
             provider = st.selectbox(
-                "Provider",
-                providers,
-                index=providers.index(st.session_state.provider)
+                "Provider", providers, index=providers.index(st.session_state.provider)
             )
 
             if provider and (models := CONFIG["MODELS"].get(provider)):
@@ -223,21 +243,19 @@ class Chat:
             selected_persona = st.selectbox(
                 "Select Persona",
                 personas,
-                index=personas.index(st.session_state.persona)
+                index=personas.index(st.session_state.persona),
             )
 
             if selected_persona == "Custom":
                 st.session_state.custom_persona = st.text_area(
-                    "Define Custom Persona",
-                    value=st.session_state.custom_persona
+                    "Define Custom Persona", value=st.session_state.custom_persona
                 )
                 st.session_state.persona = "Custom"
             else:
                 st.session_state.persona = selected_persona
 
             st.session_state.temperature = st.slider(
-                "Response Creativity",
-                0.0, 1.0, 0.7, 0.01
+                "Response Creativity", 0.0, 1.0, 0.7, 0.01
             )
 
     def _render_actions(self):
@@ -253,10 +271,10 @@ class Chat:
         if st.button("📝 Export", use_container_width=True):
             if st.session_state.chat_history:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                export_path = f'./exports/chat_export_{timestamp}.md'
-                os.makedirs('./exports', exist_ok=True)
+                export_path = f"./exports/chat_export_{timestamp}.md"
+                os.makedirs("./exports", exist_ok=True)
                 try:
-                    with open(export_path, 'w', encoding='utf-8') as f:
+                    with open(export_path, "w", encoding="utf-8") as f:
                         f.write(DB._format_markdown(st.session_state.chat_history))
                     st.success(f"Chat exported to `{export_path}`")
                 except Exception as e:
@@ -307,10 +325,22 @@ class Chat:
     def _handle_uploads(self):
         file = st.sidebar.file_uploader(
             "📎 Upload File",
-            type=["txt", "py", "js", "json", "csv", "md", "pdf", "epub", "jpg", "jpeg", "png"]
+            type=[
+                "txt",
+                "py",
+                "js",
+                "json",
+                "csv",
+                "md",
+                "pdf",
+                "epub",
+                "jpg",
+                "jpeg",
+                "png",
+            ],
         )
 
-        if file and not st.session_state.get('file_processed'):
+        if file and not st.session_state.get("file_processed"):
             try:
                 content = self._process_file(file.read(), file.type)
                 if content:
@@ -322,9 +352,11 @@ class Chat:
         if not file:
             st.session_state.file_processed = False
 
+
 def main():
     st.set_page_config(page_title="GenAI-Assistant", page_icon="💬", layout="wide")
     Chat().render_ui()
+
 
 if __name__ == "__main__":
     main()

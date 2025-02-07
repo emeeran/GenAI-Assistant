@@ -1,0 +1,15 @@
+// Note: Lists in this config will be converted to tuples when loaded
+{
+    "DEFAULT_PROVIDER": "deepseek",
+    "SUPPORTED_PROVIDERS": ["openai", "anthropic", "cohere", "groq", "xai", "deepseek"],
+    "DEFAULT_MODEL": "gpt-3.5-turbo",
+    "DEFAULT_TEMPERATURE": 0.7,
+    "MAX_HISTORY": 100,
+    "MODELS": {
+        "deepseek": [
+            "deepseek-r1-dist-70b",
+            "deepseek-chat-67b",
+            "deepseek-coder-33b"
+        ]
+    }
+}
