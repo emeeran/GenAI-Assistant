@@ -1,0 +1,1 @@
+Error extracting EPUB: stat: path should be string, bytes, os.PathLike or integer, not BytesIO
