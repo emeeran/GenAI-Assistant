@@ -17,7 +17,6 @@ from src.text_chunker import chunk_text
 from src.token_utils import ensure_token_limit, estimate_tokens
 from src.file_summarizer import FileSummarizer
 from src.content_manager import ContentManager
-from concurrent.futures import ThreadPoolExecutor
 from src.thread_manager import ThreadManager
 
 load_dotenv()
@@ -126,7 +125,6 @@ class Chat:
         self._init_file_processing()
         self.file_summarizer = FileSummarizer()
         self.content_manager = ContentManager()
-        self.executor = ThreadPoolExecutor(max_workers=4)
         self.thread_manager = ThreadManager()
 
     def _init_session_state(self):
@@ -192,24 +190,16 @@ class Chat:
             if persona:
                 messages.append({"role": "system", "content": persona})
 
-        if st.session_state.current_file_context and st.session_state.file_summary:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": f"Current file context: {st.session_state.current_file_context['name']}\n"
-                    f"Summary: {st.session_state.file_summary}",
-                }
-            )
-
         if st.session_state.current_content_id:
-            if content_info := self.content_manager.get_content(
+            content_info = self.content_manager.get_content(
                 st.session_state.current_content_id
-            ):
+            )
+            if content_info:
                 messages.append(
                     {
                         "role": "system",
-                        "content": f"Current content context: {content_info['name']}\n"
-                        f"Summary: {content_info['summary']}",
+                        "content": f"Current content context: {content_info['file_name']}\n"
+                        f"Summary: {content_info['content']}",
                     }
                 )
 
@@ -222,21 +212,16 @@ class Chat:
             st.warning("Please select a model first")
             return
 
-        # Ensure prompt isn't too large
         prompt = ensure_token_limit(prompt, CONFIG["MAX_TOKENS"])
         estimated_tokens = estimate_tokens(prompt)
 
         if estimated_tokens > CONFIG["MAX_TOKENS"]:
             chunks = chunk_text(prompt, CONFIG["MAX_TOKENS"])
-
             with st.chat_message("user"):
                 st.markdown(prompt)
-
             with st.chat_message("assistant"):
-                # Process chunks with thread manager
                 tasks = [lambda c=chunk: self._process_chunk(c) for chunk in chunks]
                 combined_response = self.thread_manager.process_tasks(tasks)
-
                 if combined_response:
                     final_response = "\n\n".join(combined_response)
                     st.session_state.chat_history.extend(
@@ -246,7 +231,6 @@ class Chat:
                         ]
                     )
         else:
-            # Handle normal-sized prompts as before
             messages = self._build_messages(prompt)
             try:
                 with st.chat_message("user"):
@@ -420,6 +404,11 @@ class Chat:
                         "content": content,
                         "type": file.type,
                     }
+                    # NEW: Store file content for model access
+                    content_id = self.content_manager.store_content(
+                        file.name, content, file.type
+                    )
+                    st.session_state.current_content_id = content_id
 
                     summary_prompt = self.file_summarizer.get_summary_prompt(
                         content, file.type, file.name
@@ -428,7 +417,6 @@ class Chat:
                     chunks = chunk_text(summary_prompt, CONFIG["MAX_TOKENS"] - 200)
                     st.info("📄 Analyzing file content...")
 
-                    # Process chunks with thread manager
                     tasks = [lambda c=chunk: self._process_chunk(c) for chunk in chunks]
                     combined_summary = self.thread_manager.process_tasks(tasks)
 
@@ -440,6 +428,9 @@ class Chat:
                         self._handle_chat(context_prompt)
 
                     st.session_state.file_processed = True
+                    st.success(
+                        "File content is ready and accessible for AI processing!"
+                    )
 
             except Exception as e:
                 st.error(f"File processing error: {e}")
@@ -466,11 +457,18 @@ class Chat:
     def _render_file_context(self):
         """Display current file context in sidebar"""
         if st.session_state.current_file_context:
-            with st.expander("📎 Current File", expanded=False):
+            with st.expander("📎 Current File", expanded=True):
                 st.write(f"File: {st.session_state.current_file_context['name']}")
                 if st.session_state.file_summary:
                     st.write("Summary:")
                     st.write(st.session_state.file_summary)
+                # New: allow users to view the full file content
+                if st.checkbox("Show File Content", key="show_file_content"):
+                    st.text_area(
+                        "File Content",
+                        value=st.session_state.current_file_context.get("content", ""),
+                        height=200,
+                    )
 
 
 def main():
