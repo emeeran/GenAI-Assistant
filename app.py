@@ -12,7 +12,6 @@ from src.document_processor import extract_pdf_text, extract_epub_text, perform_
 from src.client import Client
 from src.provider import ProviderFactory
 from persona import PERSONAS, DEFAULT_PERSONA
-from src.file_processor import make_content_available
 from src.text_chunker import chunk_text
 from src.token_utils import ensure_token_limit, estimate_tokens
 from src.file_summarizer import FileSummarizer
@@ -39,6 +38,7 @@ CONFIG = {
     "MAX_TOKENS": 2000,  # Reduced from 4000
     "CHUNK_OVERLAP": 100,  # Reduced from 200
     "RATE_LIMIT_DELAY": 2,  # Seconds between API calls
+    "SUMMARY_MAX_TOKENS": 500,  # Max tokens for summary
 }
 
 
@@ -122,36 +122,31 @@ class Chat:
         self._init_session_state()
         self.db = DB(CONFIG["DB_PATH"])
         self.client = self._setup_client()
-        self._init_file_processing()
         self.file_summarizer = FileSummarizer()
         self.content_manager = ContentManager()
         self.thread_manager = ThreadManager()
 
     def _init_session_state(self):
-        if not hasattr(st.session_state, "initialized"):
-            st.session_state.update(
-                {
-                    "chat_history": [],
-                    "current_chat": None,
-                    "model": None,
-                    "temperature": 0.7,
-                    "provider": CONFIG["DEFAULT_PROVIDER"],
-                    "persona": DEFAULT_PERSONA,
-                    "custom_persona": "",
-                    "edit_mode": False,
-                    "save_clicked": False,
-                    "load_clicked": False,
-                    "file_processed": False,
-                    "current_file_context": None,
-                    "file_summary": None,
-                    "current_content_id": None,
-                    "initialized": True,
-                }
-            )
-
-    def _init_file_processing(self):
-        if not hasattr(st.session_state, "processed_files"):
-            st.session_state.processed_files = set()
+        default_state = {
+            "chat_history": [],
+            "current_chat": None,
+            "model": None,
+            "temperature": 0.7,
+            "provider": CONFIG["DEFAULT_PROVIDER"],
+            "persona": DEFAULT_PERSONA,
+            "custom_persona": "",
+            "edit_mode": False,
+            "save_clicked": False,
+            "load_clicked": False,
+            "file_processed": False,
+            "current_file_context": None,
+            "file_summary": None,
+            "current_content_id": None,
+            "initialized": True,
+        }
+        for key, value in default_state.items():
+            if key not in st.session_state:
+                st.session_state[key] = value
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -190,16 +185,20 @@ class Chat:
             if persona:
                 messages.append({"role": "system", "content": persona})
 
+        # Reduce context by limiting summary tokens
         if st.session_state.current_content_id:
             content_info = self.content_manager.get_content(
                 st.session_state.current_content_id
             )
             if content_info:
+                summary = ensure_token_limit(
+                    content_info["content"], CONFIG["SUMMARY_MAX_TOKENS"]
+                )
                 messages.append(
                     {
                         "role": "system",
                         "content": f"Current content context: {content_info['file_name']}\n"
-                        f"Summary: {content_info['content']}",
+                        f"Summary: {summary}",
                     }
                 )
 
@@ -216,7 +215,9 @@ class Chat:
         estimated_tokens = estimate_tokens(prompt)
 
         if estimated_tokens > CONFIG["MAX_TOKENS"]:
-            chunks = chunk_text(prompt, CONFIG["MAX_TOKENS"])
+            chunks = chunk_text(
+                prompt, CONFIG["MAX_TOKENS"] // 2
+            )  # Aggressive chunking
             with st.chat_message("user"):
                 st.markdown(prompt)
             with st.chat_message("assistant"):
@@ -252,7 +253,12 @@ class Chat:
                             ]
                         )
             except Exception as e:
-                st.error(f"Response error: {e}")
+                if "too many tokens" in str(e).lower():
+                    st.error(
+                        "The input is too large. Please try a shorter prompt or upload a smaller file."
+                    )
+                else:
+                    st.error(f"Response error: {e}")
 
     def render_ui(self):
         st.markdown(
