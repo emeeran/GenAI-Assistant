@@ -1,80 +1,48 @@
-import PyPDF2
-import ebooklib
-from ebooklib import epub
-from bs4 import BeautifulSoup
 from typing import Optional
-from PIL import Image
-import pytesseract
-import whisper
+from io import BytesIO
+import logging
 
+logger = logging.getLogger(__name__)
 
-def extract_pdf_text(file_content: bytes) -> Optional[str]:
+def extract_pdf_text(file_content: BytesIO) -> str:
+    """Extract text from PDF files"""
+    from pdfminer.high_level import extract_text
+    return extract_text(file_content)
+
+def extract_epub_text(file_content: BytesIO) -> str:
+    """Extract text from EPUB files"""
     try:
-        pdf_reader = PyPDF2.PdfReader(file_content)
-        text = []
-        for page in pdf_reader.pages:
-            text.append(page.extract_text())
-        return "\n".join(text)
-    except Exception as e:
-        return f"Error extracting PDF: {e}"
+        import ebooklib
+        from ebooklib import epub
+        from bs4 import BeautifulSoup
 
-
-def extract_epub_text(file_content: bytes) -> Optional[str]:
-    try:
         book = epub.read_epub(file_content)
-        text = []
-        for item in book.get_items():
-            if item.get_type() == ebooklib.ITEM_DOCUMENT:
-                soup = BeautifulSoup(item.get_content(), "html.parser")
-                text.append(soup.get_text())
-        return "\n".join(text)
-    except Exception as e:
-        return f"Error extracting EPUB: {e}"
+        texts = []
+        for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+            soup = BeautifulSoup(item.get_content(), 'html.parser')
+            texts.append(soup.get_text())
+        return "\n".join(texts)
+    except ImportError as e:
+        logger.error(f"EPUB support requires ebooklib: {e}")
+        return "Error: EPUB support not available. Please install ebooklib."
 
+def perform_ocr(file_content: BytesIO) -> str:
+    """Perform OCR on image files"""
+    import pytesseract
+    from PIL import Image
+    return pytesseract.image_to_string(Image.open(file_content))
 
-def perform_ocr(image_file):
-    """Perform OCR on the uploaded image file."""
+def process_file(content: bytes, file_type: str) -> Optional[str]:
+    """Process various file types and return text content"""
     try:
-        image = Image.open(image_file)
-        text = pytesseract.image_to_string(image)
-        return text
+        file_content = BytesIO(content)
+        if file_type == "application/pdf":
+            return extract_pdf_text(file_content)
+        elif file_type == "application/epub+zip":
+            return extract_epub_text(file_content)
+        elif file_type.startswith("image/"):
+            return perform_ocr(file_content)
+        return content.decode('utf-8')
     except Exception as e:
-        return f"Error performing OCR: {e}"
-
-
-def transcribe_audio(uploaded_file) -> str:
-    file_content = uploaded_file.read()
-    model = whisper.load_model("base")
-    result = model.transcribe(file_content)
-    return result["text"]
-
-
-def process_uploaded_file(uploaded_file):
-    # Handles the uploaded file and returns its text content
-    file_handlers = {
-        "application/pdf": extract_pdf_text,
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": lambda f: " ".join(
-            paragraph.text for paragraph in docx.Document(f).paragraphs
-        ),
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.document": process_excel_file,
-        "application/vnd.ms-powerpoint": process_ppt_file,
-        "text/plain": lambda f: f.getvalue().decode("utf-8"),
-        "text/markdown": lambda f: f.getvalue().decode("utf-8"),
-        "image/jpeg": perform_ocr,
-        "image/png": perform_ocr,
-        "audio/mpeg": transcribe_audio,
-        "audio/wav": transcribe_audio,
-        "audio/x-wav": transcribe_audio,
-    }
-
-    handler = next(
-        (
-            func
-            for file_type, func in file_handlers.items()
-            if uploaded_file.type.startswith(file_type)
-        ),
-        None,
-    )
-    if handler:
-        return handler(uploaded_file)
-    raise ValueError("Unsupported file type")
+        logger.error(f"File processing error: {e}")
+        return None
