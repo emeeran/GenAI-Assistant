@@ -1,0 +1,8 @@
+name =
+
+prompt =
+Write a four line birthday poem for my.friend {inamey.
+The poem should be inspired by the firs letter of my friend's name.
+
+print_llm_response(prompt)
+
