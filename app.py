@@ -17,30 +17,13 @@ from src.token_utils import ensure_token_limit, estimate_tokens
 from src.file_summarizer import FileSummarizer
 from src.content_manager import ContentManager
 from src.thread_manager import ThreadManager
+from chat_engine import process_message
+import logging
+from config import CONFIG
+
+logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
-
-CONFIG = {
-    "SUPPORTED_PROVIDERS": frozenset({"openai", "anthropic", "cohere", "groq", "xai"}),
-    "DEFAULT_PROVIDER": "groq",
-    "DB_PATH": "chat_history.db",
-    "MODELS": {
-        "openai": ("gpt-4o", "gpt-4o-mini", "o1-mini-2024-09-12"),
-        "anthropic": ("claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"),
-        "groq": (
-            "deepseek-r1-distill-llama-70b",
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-        ),
-        "cohere": ("command-r7b-12-2024",),
-        "xai": ("grok-2-vision-1212",),
-    },
-    "MAX_TOKENS": 2000,  # Reduced from 4000
-    "CHUNK_OVERLAP": 100,  # Reduced from 200
-    "RATE_LIMIT_DELAY": 2,  # Seconds between API calls
-    "SUMMARY_MAX_TOKENS": 500,  # Max tokens for summary
-}
-
 
 class DB:
     def __init__(self, path: str):
@@ -215,22 +198,23 @@ class Chat:
         estimated_tokens = estimate_tokens(prompt)
 
         if estimated_tokens > CONFIG["MAX_TOKENS"]:
-            chunks = chunk_text(
-                prompt, CONFIG["MAX_TOKENS"] // 2
-            )  # Aggressive chunking
+            chunks = chunk_text(prompt, CONFIG["MAX_TOKENS"] // 2)
             with st.chat_message("user"):
                 st.markdown(prompt)
             with st.chat_message("assistant"):
-                tasks = [lambda c=chunk: self._process_chunk(c) for chunk in chunks]
+                # Wrap chunk processing in thread-safe manner
+                def process_chunk_safe(chunk):
+                    return self._process_chunk(chunk)
+
+                tasks = [lambda c=chunk: process_chunk_safe(c) for chunk in chunks]
                 combined_response = self.thread_manager.process_tasks(tasks)
+
                 if combined_response:
                     final_response = "\n\n".join(combined_response)
-                    st.session_state.chat_history.extend(
-                        [
-                            {"role": "user", "content": prompt},
-                            {"role": "assistant", "content": final_response},
-                        ]
-                    )
+                    st.session_state.chat_history.extend([
+                        {"role": "user", "content": prompt},
+                        {"role": "assistant", "content": final_response},
+                    ])
         else:
             messages = self._build_messages(prompt)
             try:
@@ -481,6 +465,17 @@ def main():
     st.set_page_config(page_title="GenAI-Assistant", page_icon="💬", layout="wide")
     Chat().render_ui()
 
+    # Removed duplicate UI elements to restore original UI:
+    # if 'chat_history' not in st.session_state:
+    #     st.session_state.chat_history = []
+    # st.title("Chat App")
+    # user_input = st.text_input("You:")
+    # if st.button("Send") and user_input:
+    #     response = process_message(user_input, st.session_state.chat_history)
+    #     st.session_state.chat_history.append(("User", user_input))
+    #     st.session_state.chat_history.append(("Bot", response))
+    # for sender, message in st.session_state.chat_history:
+    #     st.write(f"{sender}: {message}")
 
 if __name__ == "__main__":
     main()
