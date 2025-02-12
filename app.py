@@ -253,10 +253,18 @@ class Chat:
         self._render_chat()
 
     def _render_chat(self):
+        # Show existing messages
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
+        # Handle retry if needed
+        if hasattr(st.session_state, 'retry_message'):
+            retry_msg = st.session_state.retry_message
+            delattr(st.session_state, 'retry_message')  # Clear retry state
+            self._handle_chat(retry_msg)
+
+        # Always show input box
         if prompt := st.chat_input("Enter your message"):
             self._handle_chat(prompt)
 
@@ -308,8 +316,20 @@ class Chat:
         if col1.button("Refresh", use_container_width=True):
             st.session_state.chat_history = []
             st.rerun()
-        if col2.button("✏️ Edit", use_container_width=True):
-            st.session_state.edit_mode = not st.session_state.edit_mode
+        if col2.button("🔄 Retry", use_container_width=True):
+            if st.session_state.chat_history:
+                # Store last user message in session state
+                last_user_msg = next(
+                    (msg["content"] for msg in reversed(st.session_state.chat_history)
+                     if msg["role"] == "user"),
+                    None
+                )
+                if last_user_msg:
+                    # Remove last exchange
+                    st.session_state.chat_history = st.session_state.chat_history[:-2]
+                    # Store retry state and message
+                    st.session_state.retry_message = last_user_msg
+                    st.rerun()
 
         self._handle_save_load()
 
