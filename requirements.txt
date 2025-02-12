@@ -10,7 +10,7 @@ anthropic==0.42.0
 anyio==4.7.0
 asttokens==3.0.0
 attrs==24.3.0
-beautifulsoup4>=4.12.0
+beautifulsoup4==4.12.3
 blinker==1.9.0
 cachetools==5.5.0
 certifi==2024.12.14
@@ -23,7 +23,7 @@ decorator==5.1.1
 distro==1.9.0
 docstring-parser==0.16
 docx==0.2.4
-ebooklib>=0.18.0
+ebooklib==0.18
 et-xmlfile==2.0.0
 eval-type-backport==0.2.2
 executing==2.1.0
@@ -44,6 +44,7 @@ google-cloud-storage==2.19.0
 google-crc32c==1.6.0
 google-resumable-media==2.7.2
 googleapis-common-protos==1.66.0
+greenlet==3.1.1
 groq==0.13.1
 grpc-google-iam-v1==0.13.1
 grpcio==1.68.1
@@ -84,7 +85,7 @@ pandas==2.2.3
 parameterized==0.9.0
 parso==0.8.4
 pexpect==4.9.0
-pillow>=10.0.0
+pillow==11.0.0
 pip==24.0
 platformdirs==4.3.6
 prompt-toolkit==3.0.48
@@ -105,10 +106,11 @@ pyinstaller==6.11.1
 pyinstaller-hooks-contrib==2024.11
 pymupdf==1.25.3
 pypdf2==3.0.1
-pytesseract>=0.3.10
+pytesseract==0.3.13
 python-dateutil==2.9.0.post0
-python-dotenv>=1.0.0
+python-dotenv==1.0.1
 python-pptx==1.0.2
+python-slugify==8.0.4
 pytz==2024.2
 pyyaml==6.0.2
 pyzmq==26.2.0
@@ -124,10 +126,11 @@ six==1.17.0
 smmap==5.0.1
 sniffio==1.3.1
 soupsieve==2.6
-sqlite3>=3.35.0
+sqlalchemy==2.0.38
 stack-data==0.6.3
-streamlit>=1.30.0
+streamlit==1.41.1
 tenacity==9.0.0
+text-unidecode==1.3
 tokenizers==0.21.0
 toml==0.10.2
 tomli==2.2.1
